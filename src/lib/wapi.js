@@ -305,7 +305,7 @@ window.WAPI.getAllGroups = function (done) {
 window.WAPI.getChat = function (id, done) {
     id = typeof id == "string" ? id : id._serialized;
     const found = window.Store.Chat.get(id);
-    found.sendMessage = (found.sendMessage) ? found.sendMessage : function () { return window.Store.sendMessage.apply(this, arguments); };
+    if(found) found.sendMessage = (found.sendMessage) ? found.sendMessage : function () { return window.Store.sendMessage.apply(this, arguments); };
     if (done !== undefined) done(found);
     return found;
 }
@@ -1249,7 +1249,7 @@ window.WAPI.sendImage = function (imgBase64, chatid, filename, caption, done) {
     });
 }
 
-window.WAPI.sendGif = function (imgBase64, chatid, filename, caption, done) {
+window.WAPI.sendVideoAsGif = function (imgBase64, chatid, filename, caption, done) {
     //var idUser = new window.Store.UserConstructor(chatid);
     var idUser = new window.Store.UserConstructor(chatid, { intentionallyUsePrivateConstructor: true });
     // create new chat
@@ -1258,8 +1258,9 @@ window.WAPI.sendGif = function (imgBase64, chatid, filename, caption, done) {
         var mc = new Store.MediaCollection();
         mc.processFiles([mediaBlob], chat, 1).then(() => {
             var media = mc.models[0];
-            media.isGif = true;
-            media.sendToChat(chat, { caption: caption, isGif: true });
+            media.mediaPrep._mediaData.isGif=true;
+            media.mediaPrep._mediaData.gifAttribution=1;
+            media.mediaPrep.sendToChat(chat, { caption: caption });
             if (done !== undefined) done(true);
         });
     });

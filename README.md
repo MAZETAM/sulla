@@ -55,6 +55,7 @@ function start(client) {
 | Last seen & isOnline (beta)       |             | ✅          |
 | 📍 SEND LOCATION!! (beta)         |             | ✅          |
 | Simulated '...typing'             |             | ✅          |
+| Send GIFs!                        |             | ✅          |
 
 ## Capturing QR Code
 
@@ -138,6 +139,50 @@ If you intend to use video via sulla-hotfix, you need to use a chrome instance w
 You will need to make sure that you have a valid chrome instance on your machine then use the following to tell puppeteer where it can find your chrome isntance. The below demo is an example for mac.
 
 ```javascript
+
+create('session',{
+  executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+}).then(client => start(client));
+
+```
+
+## Sending Gifs
+
+Extending the functionality of sending videos, version 1.4.0 brings with it the ability to send GIFs!!!! This was super annoying to figure out, as I was sent on a wild goose chase but it turned out that the answer was just 2 simple lines.
+
+There are two ways to send GIFs - by Video or by giphy link.
+
+1. Sending Video as a GIF.
+  
+  WhatsApp doesn't actually support the .gif format - probably due to how inefficient it is as a filetype - they instead convert GIFs to video then process them.
+
+  In order to send gifs you need to do the same (convert the gif to an mp4 file) then use the following method:
+
+```javascript
+
+import { create, Whatsapp} from 'sulla-hotfix';
+
+function start(client: Whatsapp) {
+await client.sendVideoAsGif('xyz@c.us',[BASE64 Video FILE DATA],'some file.mp4', `Hello this is the caption`);
+}
+
+create('session',{
+  executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+}).then(client => start(client));
+
+```
+
+2. Sending a Giphy Media Link
+
+  This is a convenience method to make it easier to send gifs from the website [GIPHY](https://giphy.com). You need to make sure you use a giphy media link as shown below.
+
+```javascript
+
+import { create, Whatsapp} from 'sulla-hotfix';
+
+function start(client: Whatsapp) {
+await client.sendGiphy('xyz@c.us','https://media.giphy.com/media/oYtVHSxngR3lC/giphy.gif', `Hello this is the caption`);
+}
 
 create('session',{
   executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -274,4 +319,4 @@ This distribution includes cryptographic software. The country in which you curr
 The U.S. Government Department of Commerce, Bureau of Industry and Security (BIS), has classified this software as Export Commodity Control Number (ECCN) 5D002.C.1, which includes information security software using or performing cryptographic functions with asymmetric algorithms. The form and manner of this distribution makes it eligible for export under the License Exception ENC Technology Software Unrestricted (TSU) exception (see the BIS Export Administration Regulations, Section 740.13) for both object code and source code.
 
 [buymeacoffee-shield]: https://www.buymeacoffee.com/assets/img/guidelines/download-assets-sm-2.svg
-[buymeacoffee]: https://www.buymeacoffee.com/0lUd5Y3
+[buymeacoffee]: https://www.buymeacoffee.com/smashah
