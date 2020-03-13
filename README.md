@@ -1,6 +1,9 @@
 [![npm version](https://img.shields.io/npm/v/sulla-hotfix.svg?color=green)](https://www.npmjs.com/package/sulla-hotfix)
+![node](https://img.shields.io/node/v/sulla-hotfix)
 [![Buy me a coffee][buymeacoffee-shield]][buymeacoffee]
-<a href="https://discord.gg/dnpp72a"><img src="https://img.shields.io/discord/661438166758195211?color=blueviolet&label=discord&style=flat" /></a>
+[![Consulting Request][consult-shield]][consult]
+<a href="https://discord.gg/dnpp72a"><img src="https://img.shields.io/discord/661438166758195211?color=blueviolet&label=discord&style=flat" /></a> ![WhatsApp_Web 0.4.1296](https://img.shields.io/badge/WhatsApp_Web-0.4.1296-brightgreen.svg)
+
 # sulla-hotfix
 
 > Sulla is a javascript library which provides a high-level API control to Whatsapp so it can be configured to automatize resposes or any data that goes trough Whatsapp effortlessly.
@@ -11,6 +14,19 @@
 
 ```bash
 > npm i --save sulla-hotfix
+```
+
+## Running the demo
+
+You can clone this repo and run the demo, but you will need to use typescript/ts-node:
+
+```bash
+> git clone https://github.com/smashah/sulla.git
+> cd sulla
+> npm i
+> npm i -g ts-node typescript
+> cd demo
+> ts-node index.ts
 ```
 
 ## Usage
@@ -50,7 +66,7 @@ function start(client) {
 | [Send Images (image)](#sending-mediafiles)               |             | ✅          |
 | [Send media (audio, doc)](#sending-mediafiles)  |             | ✅          |
 | [Send media (video)](#sending-video)  |             | ✅          |
-| Send stickers                     |             |             |
+| Send stickers                     |             |✅           |
 | [Decrypt media (image, audio, doc)](#decrypting-media) |             | ✅          |
 | [Capturing QR Code](#capturing-qr-code)                 |             | ✅          |
 | [Multiple Sessions](#managing-multiple-sessions-at-once)                 |             | ✅          |
@@ -213,6 +229,8 @@ await client.sendFile('xyz@c.us',[BASE64 FILE DATA],'some file.pdf', `Hello this
 
 create().then(client => start(client));
 ```
+
+Please note sometimes short(<4s) voice notes sometimes do not decrypt properly and result in empty audio files.
 
 ## Sending Video
 
@@ -436,6 +454,18 @@ ack represents the acknoledgement state, of which there are 3.
 
 Note: You won't get 3 if the recipient has read receipts off.
 
+## Timing out an unpaired session
+
+If you want to kill the process after a certain amount of seconds due to an unscanned code, you can now set the killTimer parameter in the configuration object.
+
+```javascript
+create('session',
+{
+  killTimer: 30 //kills the session if the QR code is not scanned within 30 seconds.
+})
+.then(client => start(client));
+```
+
 ## Managing multiple sessions at once
 
 With v1.2.4, you can now run multiple sessions of sulla-hotfix in the same 'app'. This allows you to do interesting things for example:
@@ -473,6 +503,15 @@ ev.on('qr.**', async (qrcode,sessionId) => {
 });
 ```
 
+## Manage page errors
+
+Since this project is built upon puppeteer, you can access the [Puppeteer Page](https://pptr.dev/#?product=Puppeteer&version=v2.0.0&show=api-class-page) instance by referencing `client.page`, and then therefore you can listen to any errors on the page like so:
+
+```javascript
+client.page.on('error', _=>{
+...
+}
+```
 
 ## Custom Set Up
 
@@ -592,3 +631,5 @@ The U.S. Government Department of Commerce, Bureau of Industry and Security (BIS
 
 [buymeacoffee-shield]: https://www.buymeacoffee.com/assets/img/guidelines/download-assets-sm-2.svg
 [buymeacoffee]: https://www.buymeacoffee.com/smashah
+[consult-shield]: https://img.shields.io/badge/Require%20Paid%20Support%20or%20Consulting%3F-Click%20Here-blue?style=for-the-badge&logo=paypal
+[consult]: mailto:shah@idk.uno?subject=WhatsApp%20Consulting

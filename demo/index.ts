@@ -23,9 +23,23 @@ ev.on('qr.**', async (qrcode,sessionId) => {
   fs.writeFileSync(`qr_code${sessionId?'_'+sessionId:''}.png`, imageBuffer);
 });
 
+ev.on('**', async (data,sessionId,namespace) => {
+  console.log("\n----------")
+  console.log('EV',data,sessionId,namespace)
+  console.log("----------")
+})
+
+ev.on('sessionData.**', async (sessionData, sessionId) =>{
+  console.log("\n----------")
+  console.log('sessionData',sessionId, sessionData)
+  console.log("----------")
+})
+
 async function start(client: Whatsapp) {
   globalClient=client;
   console.log('starting');
+  const me = await client.getMe();
+  console.log("start -> me", me);
   // const chats = await client.getAllChatsWithMessages(false);
   // console.log("TCL: start -> chats", chats)
   // console.log("TCL: getAllChatsWithMessages ->", chats.length, chats[0]);
@@ -61,13 +75,15 @@ async function start(client: Whatsapp) {
       const filename = `${message.t}.${mime.extension(message.mimetype)}`;
       const mediaData = await decryptMedia(message, uaOverride);
       // you can send a file also with sendImage or await client.sendFile
-      await client.sendImage(
-        message.from,
-        `data:${message.mimetype};base64,${mediaData.toString('base64')}`,
-        filename,
-        `You just sent me this ${message.type}`
-      );
-
+      // await client.sendImage(
+      //   message.from,
+      //   `data:${message.mimetype};base64,${mediaData.toString('base64')}`,
+      //   filename,
+      //   `You just sent me this ${message.type}`
+      // );
+      
+      //send the whole data URI so the mimetype can be checked.
+      await client.sendImageAsSticker(`data:${message.mimetype};base64,${mediaData.toString('base64')}`, message.from)
 
       //get this numbers products
       // const products = await client.getBusinessProfilesProducts(message.to);
@@ -93,17 +109,23 @@ async function start(client: Whatsapp) {
       console.log("TCL: location -> message", message.lat, message.lng, message.loc)
       await client.sendLocation(message.from, `${message.lat}`, `${message.lng}`, `Youre are at ${message.loc}`)
     } else {
-      await client.sendText(message.from, message.body);
-      //send a giphy gif
-        await client.forwardMessages(message.from,message,false);
-      await client.sendGiphy(message.from,'https://media.giphy.com/media/oYtVHSxngR3lC/giphy.gif','Oh my god it works');
-      console.log("TCL: start -> message.from,message.body,message.id.toString()", message.from,message.body,message.id.toString())
-      await client.reply(message.from,message.body,message);
+      // var sentMessageId = await client.sendText(message.from, message.body);
+      // console.log("start -> sentMessageId", sentMessageId)
+      // //send a giphy gif
+      //   await client.forwardMessages(message.from,message,false);
+      // await client.sendGiphy(message.from,'https://media.giphy.com/media/oYtVHSxngR3lC/giphy.gif','Oh my god it works');
+      // console.log("TCL: start -> message.from,message.body,message.id.toString()", message.from,message.body,message.id.toString())
+      // await client.reply(message.from,message.body,message);
     }
     } catch (error) {
     console.log("TCL: start -> error", error)
     }
   });
+
+    // const groupCreationEvent = await client.createGroup('coolnewgroup','0000000000@c.us');
+    // console.log("start -> groupCreationEvent", groupCreationEvent)
+  //wait a few seconds and make a group
+
 }
 
 //you can now create two sessions pointing 
@@ -117,35 +139,36 @@ async function start(client: Whatsapp) {
  */
 create('session',
 {
-  executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  // executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  useChrome: true,
   headless:true,
   throwErrorOnTosBlock:true,
   killTimer:40,
   autoRefresh:true, //default to true
   qrRefreshS:15, //please note that if this is too long then your qr code scan may end up being invalid. Generally qr codes expire every 15 seconds.
-  cacheEnabled:false,
-  devtools:true,
-  blockCrashLogs:true,
+  // cacheEnabled:false,
+  // devtools:true,
+  // blockCrashLogs:true,
   //OR
   // devtools:{
   //   user:'admin',
   //   pass:'root'
   // },
   //example chrome args. THIS MAY BREAK YOUR APP !!!ONLY FOR TESTING FOR NOW!!!.
-  chromiumArgs:[
-    '--aggressive-cache-discard',
-    '--disable-cache',
-    '--disable-application-cache',
-    '--disable-offline-load-stale-cache',
-    '--disk-cache-size=0'
-  ]
+  // chromiumArgs:[
+  //   '--aggressive-cache-discard',
+  //   '--disable-cache',
+  //   '--disable-application-cache',
+  //   '--disable-offline-load-stale-cache',
+  //   '--disk-cache-size=0'
+  // ]
 }
 )
 // create()
 .then(async client => await start(client))
 .catch(e=>{
   console.log('Error',e.message);
-  process.exit();
+  // process.exit();
 });
 
 //or you can set a 'session id'

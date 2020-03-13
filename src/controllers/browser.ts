@@ -1,12 +1,12 @@
 import * as path from 'path';
 const fs = require('fs');
 const {installMouseHelper} = require('./mouse-helper');
+const ChromeLauncher = require('chrome-launcher');
 // import opuppeteer from 'puppeteer';
 // puppeteer-extra is a drop-in replacement for puppeteer,
 // it augments the installed puppeteer with plugin functionality
 const puppeteer = require('puppeteer-extra');
 const devtools = require('puppeteer-extra-plugin-devtools')()
-
 // add stealth plugin and use defaults (all evasion techniques)
 const StealthPlugin = require('puppeteer-extra-plugin-stealth')
 puppeteer.use(StealthPlugin());
@@ -42,15 +42,25 @@ export async function initWhatsapp(sessionId?: string, puppeteerConfigOverride?:
       interceptedRequest.continue({headers});
   }
   );
-  
+  //check if [session].json exists in __dirname
+  const sessionjsonpath = path.join(process.cwd(), `${sessionId || 'session'}.data.json`);
+  let sessionjson = puppeteerConfigOverride?.sessionData;
+  if (fs.existsSync(sessionjsonpath)) sessionjson = JSON.parse(fs.readFileSync(sessionjsonpath));
+  if(sessionjson) await waPage.evaluateOnNewDocument(
+    session => {
+        localStorage.clear();
+        localStorage.setItem('WABrowserId', session.WABrowserId);
+        localStorage.setItem('WASecretBundle', session.WASecretBundle);
+        localStorage.setItem('WAToken1', session.WAToken1);
+        localStorage.setItem('WAToken2', session.WAToken2);
+    }, sessionjson);
+    
   await waPage.goto(puppeteerConfig.whatsappUrl);
-  await randomMouseMovements(waPage);
+  // await randomMouseMovements(waPage);
   return waPage;
 }
 
 export async function injectApi(page: Page) {
-  // const preloadFile = fs.readFileSync('./preload', 'utf8');
-  // await page.evaluateOnNewDocument(preloadFile);
   await page.addScriptTag({
     path: require.resolve(path.join(__dirname, '../lib', 'wapi.js'))
   });
@@ -62,11 +72,17 @@ export async function injectApi(page: Page) {
 }
 
 async function initBrowser(sessionId?: string, puppeteerConfigOverride:any={}) {
+
+  if(puppeteerConfigOverride?.useChrome) {
+    puppeteerConfigOverride.executablePath = ChromeLauncher.Launcher.getInstallations()[0];
+    console.log('\nFound chrome', puppeteerConfigOverride.executablePath)
+  }
+
   const browser = await puppeteer.launch({
     headless: true,
     devtools: false,
     // executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    userDataDir: path.join(process.cwd(), sessionId || 'session'),
+    // userDataDir: path.join(process.cwd(), sessionId || 'session'),
     args: [...puppeteerConfig.chromiumArgs],
     ...puppeteerConfigOverride
   });

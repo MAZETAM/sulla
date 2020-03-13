@@ -3,13 +3,14 @@ import { Page } from 'puppeteer';
  * @private
  */
 import { ExposedFn } from './functions/exposed.enum';
-import { Chat, LiveLocationChangedEvent } from './model/chat';
+import { Chat, LiveLocationChangedEvent, ChatState } from './model/chat';
 import { Contact } from './model/contact';
 import { Message } from './model/message';
 import { Id } from './model/id';
 import axios from 'axios';
 import { ParticipantChangedEventModel } from './model/group-metadata';
 import { useragent } from '../config/puppeteer.config'
+import sharp from 'sharp';
 
 export const getBase64 = async (url: string) => {
   try {
@@ -24,13 +25,31 @@ export const getBase64 = async (url: string) => {
   }
 }
 
+function base64MimeType(encoded) {
+  var result = null;
+
+  if (typeof encoded !== 'string') {
+    return result;
+  }
+
+  var mime = encoded.match(/data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+).*,.*/);
+
+  if (mime && mime.length) {
+    result = mime[1];
+  }
+
+  return result;
+}
+
 declare module WAPI {
   const waitNewMessages: (rmCallback: boolean, callback: Function) => void;
   const addAllNewMessagesListener: (callback: Function) => void;
   const onStateChanged: (callback: Function) => void;
+  const onAddedToGroup: (callback: Function) => any;
   const onParticipantsChanged: (groupId: string, callback: Function) => any;
   const onLiveLocation: (chatId: string, callback: Function) => any;
-  const sendMessage: (to: string, content: string) => void;
+  const sendMessage: (to: string, content: string) => string;
+  const setChatState: (chatState: ChatState, chatId: string) => void;
   const reply: (to: string, content: string, quotedMsg: string | Message) => void;
   const getGeneratedUserAgent: (userAgent?: string) => string;
   const forwardMessages: (to: string, messages: string | (string | Message)[], skipMyMessages: boolean) => any;
@@ -38,10 +57,13 @@ declare module WAPI {
   const addParticipant: (groupId: string, contactId: string) => void;
   const setMyName: (newName: string) => void;
   const setMyStatus: (newStatus: string) => void;
+  const getStatus: (contactId: string) => void;
+  const getGroupAdmins: (groupId: string) => Contact[];
   const removeParticipant: (groupId: string, contactId: string) => void;
   const promoteParticipant: (groupId: string, contactId: string) => void;
   const demoteParticipant: (groupId: string, contactId: string) => void;
-  const createGroup: (groupName: string, contactId: string|string[]) => void;
+  const sendImageAsSticker: (webpBase64: string, to: string, metadata?: any) => void;
+  const createGroup: (groupName: string, contactId: string|string[]) => Promise<any>;
   const sendSeen: (to: string) => void;
   const sendImage: (
     base64: string,
@@ -76,6 +98,7 @@ declare module WAPI {
   const getAllUnreadMessages: () => any;
   const getAllChatsWithMessages: (withNewMessageOnly?: boolean) => any;
   const getAllChats: () => any;
+  const getBatteryLevel: () => Number;
   const getChat: (contactId: string) => Chat;
   const getProfilePicFromServer: (chatId: string) => any;
   const getAllChatIds: () => string[];
@@ -87,7 +110,7 @@ declare module WAPI {
   const getContact: (contactId: string) => Contact;
   const checkNumberStatus: (contactId: string) => any;
   const getChatById: (contactId: string) => Chat;
-  const smartDeleteMessages: (contactId: string, messageId: string[] | string) => any;
+  const smartDeleteMessages: (contactId: string, messageId: string[] | string, onlyLocal:boolean) => any;
   const sendContact: (to: string, contact: string | string[]) => any;
   const simulateTyping: (to: string, on: boolean) => void;
   const isConnected: () => Boolean;
@@ -114,15 +137,15 @@ declare module WAPI {
 export class Whatsapp {
 
   /**
-   * @param page: Page puppeteer page running web.whatsapp.com
+   * @param page [Page] [Puppeteer Page]{@link https://pptr.dev/#?product=Puppeteer&version=v2.1.1&show=api-class-page} running web.whatsapp.com
    */
   constructor(public page: Page) {
     this.page = page;
   }
 
   /**
-   * Listens to messages received
-   * @returns Observable stream of messages
+   * @event Listens to messages received
+   * @fires Observable stream of messages
    */
   public onMessage(fn: (message: Message) => void) {
     this.page.exposeFunction(ExposedFn.OnMessage, (message: Message) =>
@@ -131,9 +154,9 @@ export class Whatsapp {
   }
 
   /**
-   * Listens to all new messages
+   * @event Listens to all new messages
    * @param to callback
-   * @returns 
+   * @fires Message 
    */
   public async onAnyMessage(fn: (message: Message) => void) {
     this.page.exposeFunction(ExposedFn.OnAnyMessage, (message: Message) =>
@@ -145,7 +168,7 @@ export class Whatsapp {
   }
 
   /**
-   * Listens to messages received
+   * @event Listens to messages received
    * @returns Observable stream of messages
    */
   public onStateChanged(fn: (state: string) => void) {
@@ -179,6 +202,19 @@ export class Whatsapp {
        )
    }
 
+   /**
+    * Sets the chat state
+    * @param {ChatState|0|1|2} chatState The state you want to set for the chat. Can be TYPING (0), RECRDING (1) or PAUSED (2).
+    * @param {String} chatId 
+    */
+   public async setChatState(chatState: ChatState, chatId: String) {
+    return await this.page.evaluate(
+      ({chatState, chatId}) => {WAPI.setChatState(chatState, chatId)},
+      //@ts-ignore
+      {chatState, chatId}
+      )
+  }
+    
   /**
    * Returns the connecction state
    * @returns Any of OPENING, PAIRING, UNPAIRED, UNPAIRED_IDLE, CONNECTED, TIMEOUT, CONFLICT, UNLAUNCHED, PROXYBLOCK, TOS_BLOCK, SMB_TOS_BLOCK, DEPRECATED_VERSION
@@ -189,7 +225,7 @@ export class Whatsapp {
   }
 
   /**
-   * Listens to messages acknowledgement Changes
+   * @event Listens to messages acknowledgement Changes
    * @returns Observable stream of messages
    */
   public onAck(fn: (message: Message) => void) {
@@ -221,10 +257,11 @@ export class Whatsapp {
   }
 
 /**
- * Listens to live locations from a chat that already has valid live locations
+ * @event Listens to live locations from a chat that already has valid live locations
  * @param chatId the chat from which you want to subscribes to live location updates
  * @param fn callback that takes in a LiveLocationChangedEvent
  * @returns boolean, if returns false then there were no valid live locations in the chat of chatId
+ * @emits <LiveLocationChangedEvent> LiveLocationChangedEvent
  */
   public onLiveLocation(chatId: string, fn: (liveLocationChangedEvent: LiveLocationChangedEvent) => void) {
     const funcName = "onLiveLocation_" + chatId.replace('_', "").replace('_', "");
@@ -241,7 +278,7 @@ export class Whatsapp {
   }
 
   /**
-   * Listens to add and remove evevnts on Groups
+   * @event Listens to add and remove evevnts on Groups
    * @param to group id: xxxxx-yyyy@us.c
    * @param to callback
    * @returns Observable stream of participantChangedEvent
@@ -260,6 +297,27 @@ export class Whatsapp {
       ));
   }
 
+
+  /**
+   * @event Fires callback with Chat object every time the host phone is added to a group.
+   * @param to callback
+   * @returns Observable stream of Chats
+   */
+  public onAddedToGroup(fn: (chat: Chat) => void) {
+    const funcName = "onAddedToGroup";
+    return this.page.exposeFunction(funcName, (chat: Chat) =>
+      fn(chat)
+    )
+      .then(_ => this.page.evaluate(
+        (funcName ) => {
+        //@ts-ignore
+          WAPI.onAddedToGroup(window[funcName]);
+        },
+        {funcName}
+      ));
+  }
+  
+
   /**
    * Sends a text message to given chat
    * @param to chat id: xxxxx@us.c
@@ -269,7 +327,7 @@ export class Whatsapp {
     return await this.page.evaluate(
       ({ to, content }) => {
         WAPI.sendSeen(to);
-        WAPI.sendMessage(to, content);
+        return WAPI.sendMessage(to, content);
       },
       { to, content }
     );
@@ -450,7 +508,9 @@ export class Whatsapp {
  * Returns an object with all of your host device details
  */
   public async getMe(){
-    return await this.page.evaluate(() => WAPI.getMe());
+    // return await this.page.evaluate(() => WAPI.getMe());
+    //@ts-ignore
+    return await this.page.evaluate(() => Store.Me.attributes);
   }
 
 
@@ -555,6 +615,14 @@ export class Whatsapp {
    */
   public async isConnected() {
     return await this.page.evaluate(() => WAPI.isConnected());
+  }
+
+  /**
+   * Retrieves Battery Level
+   * @returns Number
+   */
+  public async getBatteryLevel() {
+    return await this.page.evaluate(() => WAPI.getBatteryLevel());
   }
 
   /**
@@ -677,6 +745,18 @@ export class Whatsapp {
     );
   }
 
+  
+  /**
+   * Sets a chat status to seen. Marks all messages as ack: 3
+   * @param chatId chat id: xxxxx@us.c
+   */
+  public async sendSeen(chatId: string) {
+    return await this.page.evaluate(
+     chatId => WAPI.sendSeen(chatId),
+      chatId
+    );
+  }
+
 
   /**
     * Load more messages in chat object from server. Use this in a while loop
@@ -689,6 +769,19 @@ export class Whatsapp {
       contactId
     );
   }
+
+/**
+ * Get the status of a contact
+ * @param contactId {string} to '000000000000@c.us'
+ * returns: {id: string,status: string}
+ */
+
+public async getStatus(contactId: string) {
+  return await this.page.evaluate(
+    contactId => WAPI.getStatus(contactId),
+    contactId
+  );
+}
 
   /**
     * Load all messages in chat object from server.
@@ -716,13 +809,15 @@ export class Whatsapp {
 
   /**
    * Deletes message of given message id
-   * @param messageId
+   * @param contactId The chat id from which to delete the message.
+   * @param messageId The specific message id of the message to be deleted
+   * @param onlyLocal If it should only delete locally (message remains on the other recipienct's phone). Defaults to false.
    * @returns nothing
    */
-  public async deleteMessage(contactId: string, messageId: string[] | string) {
+  public async deleteMessage(contactId: string, messageId: string[] | string, onlyLocal : boolean = false) {
     return await this.page.evaluate(
-      ({ contactId, messageId }) => WAPI.smartDeleteMessages(contactId, messageId),
-      { contactId, messageId }
+      ({ contactId, messageId, onlyLocal }) => WAPI.smartDeleteMessages(contactId, messageId, onlyLocal),
+      { contactId, messageId, onlyLocal }
     );
   }
 
@@ -803,12 +898,25 @@ export class Whatsapp {
    * Sends a text message to given chat
    * @param to group name: 'New group'
    * @param contacts: A single contact id or an array of contact ids.
+   * @returns Promise<GroupCreationResponse> :
+   * ```javascript
+   * {
+   *   status: 200,
+   *   gid: {
+   *     server: 'g.us',
+   *     user: '447777777777-1583678870',
+   *     _serialized: '447777777777-1583678870@g.us'
+   *   },
+   *   participants: [
+   *     { '447777777777@c.us': [Object] },
+   *     { '447444444444@c.us': [Object] }
+   *   ]
+   * }
+   * ```
    */
   public async createGroup(groupName:string,contacts:string|string[]){
     return await this.page.evaluate(
-      ({ groupName, contacts }) => {
-        WAPI.createGroup(groupName, contacts);
-      },
+      ({ groupName, contacts }) => WAPI.createGroup(groupName, contacts),
       { groupName, contacts }
     );
   }
@@ -866,6 +974,44 @@ export class Whatsapp {
       ({ idGroup, idParticipant }) => WAPI.demoteParticipant(idGroup, idParticipant),
       { idGroup, idParticipant }
     );
+  }
+
+  /**
+  * Get Admins of a Group
+  * @param {*} idGroup '0000000000-00000000@g.us'
+  */
+  public async getGroupAdmins(idGroup: string) {
+    return await this.page.evaluate(
+      (idGroup) => WAPI.getGroupAdmins(idGroup),
+      idGroup
+    );
+  }
+
+  /**
+   * This function takes an image and sends it as a sticker to the recipient. This is helpful for sending semi-ephemeral things like QR codes. 
+   * The advantage is that it will not show up in the recipients gallery. This function automatiicaly converts images to the required webp format.
+   * @param b64: This is the base64 string formatted with data URI. You can also send a plain base64 string but it may result in an error as the function will not be able to determine the filetype before sending.
+   * @param to: The recipient id.
+   */
+  public async sendImageAsSticker(b64: string,to: string){
+    const buff = Buffer.from(b64.replace(/^data:image\/(png|gif|jpeg);base64,/,''), 'base64');
+    const mimeInfo = base64MimeType(b64);
+    if(!mimeInfo || mimeInfo.includes("image")){
+      //non matter what, convert to webp, resize + autoscale to width 512 px
+      const scaledImageBuffer = await sharp(buff,{ failOnError: false })
+      .resize({ width: 512, height: 512 })
+      .toBuffer();
+      const webp = sharp(scaledImageBuffer,{ failOnError: false }).webp();
+      const metadata : any= await webp.metadata();
+      const webpBase64 = (await webp.toBuffer()).toString('base64');
+      return await this.page.evaluate(
+        ({ webpBase64,to, metadata }) => WAPI.sendImageAsSticker(webpBase64,to, metadata),
+        { webpBase64,to, metadata }
+      );
+    } else {
+      console.log('Not an image');
+      return false;
+    }
   }
 }
 
